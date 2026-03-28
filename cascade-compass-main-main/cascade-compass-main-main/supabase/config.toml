@@ -1,0 +1,4 @@
+project_id = "yzibibnaovrhqwrlktge"
+
+[functions.generate-cascade]
+verify_jwt = false
