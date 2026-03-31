@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd cascade-compass-main-main/cascade-compass-main-main && npm install",
+  "buildCommand": "cd cascade-compass-main-main/cascade-compass-main-main && npm run build",
+  "outputDirectory": "cascade-compass-main-main/cascade-compass-main-main/dist",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/generate-cascade.ts": {
+      "maxDuration": 60
+    }
+  }
+}
