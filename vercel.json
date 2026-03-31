@@ -8,7 +8,8 @@
   ],
   "functions": {
     "api/generate-cascade.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "cascade-compass-main-main/cascade-compass-main-main/src/**"
     }
   }
 }

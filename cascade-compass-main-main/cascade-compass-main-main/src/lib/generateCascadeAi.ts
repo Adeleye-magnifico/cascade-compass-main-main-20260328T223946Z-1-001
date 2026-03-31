@@ -328,7 +328,27 @@ function getGeminiApiKey(): string | undefined {
 }
 
 function getGeminiCascadeModel(): string {
-  return process.env.GEMINI_CASCADE_MODEL?.trim() || "gemini-2.5-flash";
+  return process.env.GEMINI_CASCADE_MODEL?.trim() || "gemini-2.0-flash";
+}
+
+/** Gemini caps vary by model; very large values return HTTP 400. Default is safe for Flash models. */
+function getMaxOutputTokens(): number {
+  const raw = process.env.GEMINI_MAX_OUTPUT_TOKENS?.trim();
+  if (raw && /^\d+$/.test(raw)) {
+    const n = parseInt(raw, 10);
+    if (n >= 1024 && n <= 65536) return n;
+  }
+  return 8192;
+}
+
+function parseGeminiErrorMessage(bodyText: string): string | null {
+  try {
+    const j = JSON.parse(bodyText) as { error?: { message?: string } };
+    const m = j.error?.message;
+    return typeof m === "string" && m.length > 0 ? m.slice(0, 500) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function callGeminiCascade(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -338,49 +358,49 @@ async function callGeminiCascade(systemPrompt: string, userPrompt: string): Prom
   }
 
   const model = getGeminiCascadeModel();
+  const maxOutputTokens = getMaxOutputTokens();
   const url = `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  const body = {
+  const buildBody = (opts: { jsonMode: boolean }) => ({
     systemInstruction: { parts: [{ text: systemPrompt }] },
     contents: [{ role: "user", parts: [{ text: userPrompt }] }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 65536,
-      responseMimeType: "application/json",
+      maxOutputTokens,
+      ...(opts.jsonMode ? { responseMimeType: "application/json" as const } : {}),
     },
-  };
+  });
 
   let response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildBody({ jsonMode: true })),
   });
 
   // Some model IDs reject JSON mode; retry once without responseMimeType.
   if (!response.ok && response.status === 400) {
     const errText = await response.text();
+    const parsed = parseGeminiErrorMessage(errText);
     if (errText.includes("responseMimeType") || errText.includes("responseSchema")) {
       response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 65536,
-          },
-        }),
+        body: JSON.stringify(buildBody({ jsonMode: false })),
       });
     } else {
       console.error("Gemini API error:", 400, errText);
-      throw new Error("AI generation failed. Please try again.");
+      throw new Error(
+        parsed
+          ? `Gemini API rejected the request: ${parsed}`
+          : "AI generation failed (invalid request). Check GEMINI_CASCADE_MODEL and GEMINI_MAX_OUTPUT_TOKENS.",
+      );
     }
   }
 
   if (!response.ok) {
     const status = response.status;
     const bodyText = await response.text();
+    const parsed = parseGeminiErrorMessage(bodyText);
     console.error("Gemini API error:", status, bodyText);
 
     if (status === 429) {
@@ -389,8 +409,15 @@ async function callGeminiCascade(systemPrompt: string, userPrompt: string): Prom
     if (status === 403 || status === 401) {
       throw new Error("Invalid or missing Gemini API key. Check GEMINI_API_KEY in your environment.");
     }
+    if (status === 404) {
+      throw new Error(
+        `Gemini model not found: "${model}". Set GEMINI_CASCADE_MODEL to a valid model id (e.g. gemini-2.0-flash).`,
+      );
+    }
 
-    throw new Error("AI generation failed. Please try again.");
+    throw new Error(
+      parsed ? `Gemini API error: ${parsed}` : "AI generation failed. Please try again.",
+    );
   }
 
   const result = (await response.json()) as {
@@ -426,7 +453,8 @@ async function callGeminiCascade(systemPrompt: string, userPrompt: string): Prom
 
 /**
  * Runs structured cascade analysis via Google Gemini (Google AI Studio free tier).
- * Configure `GEMINI_API_KEY` (or `GOOGLE_GENERATIVE_AI_API_KEY`). Optional: `GEMINI_CASCADE_MODEL` (default: gemini-2.5-flash).
+ * Configure `GEMINI_API_KEY` (or `GOOGLE_GENERATIVE_AI_API_KEY`).
+ * Optional: `GEMINI_CASCADE_MODEL` (default: gemini-2.0-flash), `GEMINI_MAX_OUTPUT_TOKENS` (default: 8192).
  */
 export async function runCascadeAi(formData: JobAnalysisInput): Promise<CascadeOutput> {
   const userPrompt = buildUserPrompt(formData);

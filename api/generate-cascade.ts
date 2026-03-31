@@ -1,5 +1,4 @@
 import type { JobAnalysisInput } from "../cascade-compass-main-main/cascade-compass-main-main/src/types/jobAnalysis";
-import { runCascadeAi } from "../cascade-compass-main-main/cascade-compass-main-main/src/lib/generateCascadeAi";
 
 const cors = (res: { setHeader: (n: string, v: string) => void }) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,6 +25,10 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Missing formData in request body" });
     }
 
+    // Dynamic import avoids ERR_REQUIRE_ESM: Vercel bundles api/*.ts as CJS but src/ is ESM.
+    const { runCascadeAi } = await import(
+      "../cascade-compass-main-main/cascade-compass-main-main/src/lib/generateCascadeAi.js"
+    );
     const output = await runCascadeAi(formData);
     return res.status(200).json(output);
   } catch (e) {

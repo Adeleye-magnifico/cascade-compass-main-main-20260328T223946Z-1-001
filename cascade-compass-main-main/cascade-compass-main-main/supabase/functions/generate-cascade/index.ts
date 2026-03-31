@@ -168,7 +168,7 @@ serve(async (req) => {
     if (!geminiKey) throw new Error("GEMINI_API_KEY is not configured");
 
     const userPrompt = buildUserPrompt(formData);
-    const model = (Deno.env.get("GEMINI_CASCADE_MODEL") || "gemini-2.5-flash").trim();
+    const model = (Deno.env.get("GEMINI_CASCADE_MODEL") || "gemini-2.0-flash").trim();
     const base = "https://generativelanguage.googleapis.com/v1beta";
     const url = `${base}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiKey)}`;
 
@@ -177,7 +177,7 @@ serve(async (req) => {
       contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       generationConfig: {
         temperature: 0.7,
-        maxOutputTokens: 65536,
+        maxOutputTokens: 8192,
         responseMimeType: "application/json",
       },
     };
@@ -197,7 +197,7 @@ serve(async (req) => {
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
             contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-            generationConfig: { temperature: 0.7, maxOutputTokens: 65536 },
+            generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
           }),
         });
       } else {
